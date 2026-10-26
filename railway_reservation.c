@@ -2,8 +2,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 #include <time.h>
+
+struct Stop {            // one station on the route of a train
+    char name[20];
+    char time[10];       // a time with +1 or +2 means the next day or the day after
+    int km;              // distance from the first station
+};
+
+struct Passenger {
+    char name[30];
+    int age;
+};
+
+struct ClassType {       // Sleeper, 3AC, 2AC
+    char name[10];
+    float mult;          // fare multiplier of the class
+};
+
+struct Food {
+    char name[20];
+    float price;
+};
 
 struct Train {
     int no;
@@ -16,6 +36,8 @@ struct Train {
     char duration[12];
     float fare;
     int cap[3];          // seats in Sleeper, 3AC, 2AC
+    int nStops;          // number of stations on the route
+    struct Stop stops[8];
 };
 
 struct Ticket {
@@ -24,63 +46,51 @@ struct Ticket {
     int train;           // index of the train in trains[]
     int cls;             // 0 = Sleeper, 1 = 3AC, 2 = 2AC
     int qty;
-    char pname[6][30];   // passenger names
-    int age[6];
+    struct Passenger pax[6];
     int seats[6];
     char date[12];
     int status;          // 1 = confirmed, 2 = waitlist, 3 = cancelled
     float fare;
     float food;
     int notified;        // 0 = user not told yet that waitlist got confirmed
-    int from;            // index of boarding station in stopName[train][]
+    int from;            // index of boarding station in stops[] of the train
     int to;              // index of destination station
 };
 
 struct Train trains[6] = {
-    {12001, "Northern Express", "New Delhi", "Lucknow",   "06:00", "12:30", "512 km",  "6h 30m",  500,  {60, 40, 20}},
-    {12002, "Deccan Express",   "Mumbai",    "Pune",      "07:10", "10:25", "192 km",  "3h 15m",  450,  {50, 30, 20}},
-    {12301, "Eastern Express",  "New Delhi", "Kolkata",   "16:55", "10:00", "1451 km", "17h 05m", 900,  {80, 50, 30}},
-    {12401, "Desert Express",   "New Delhi", "Jaipur",    "06:15", "10:45", "303 km",  "4h 30m",  400,  {60, 40, 20}},
-    {12951, "Western Rajdhani", "Mumbai",    "New Delhi", "17:00", "08:35", "1384 km", "15h 35m", 1200, {0, 50, 30}},
-    {12627, "Southern Express", "New Delhi", "Chennai",   "21:05", "05:45", "2180 km", "32h 40m", 1500, {80, 50, 30}}
+    {12001, "Northern Express", "New Delhi", "Lucknow", "06:00", "12:30", "512 km", "6h 30m", 500, {60, 40, 20}, 6,
+        {{"New Delhi", "06:00", 0}, {"Ghaziabad", "06:35", 25}, {"Moradabad", "08:40", 167}, {"Bareilly", "09:50", 250}, {"Shahjahanpur", "10:35", 320}, {"Lucknow", "12:30", 512}}},
+    {12002, "Deccan Express", "Mumbai", "Pune", "07:10", "10:25", "192 km", "3h 15m", 450, {50, 30, 20}, 5,
+        {{"Mumbai", "07:10", 0}, {"Thane", "07:40", 25}, {"Kalyan", "08:00", 54}, {"Lonavala", "09:20", 128}, {"Pune", "10:25", 192}}},
+    {12301, "Eastern Express", "New Delhi", "Kolkata", "16:55", "10:00", "1451 km", "17h 05m", 900, {80, 50, 30}, 7,
+        {{"New Delhi", "16:55", 0}, {"Kanpur", "22:15", 440}, {"Prayagraj", "00:45 +1", 634}, {"Gaya", "05:00 +1", 990}, {"Dhanbad", "07:30 +1", 1240}, {"Asansol", "08:15 +1", 1290}, {"Kolkata", "10:00 +1", 1451}}},
+    {12401, "Desert Express", "New Delhi", "Jaipur", "06:15", "10:45", "303 km", "4h 30m", 400, {60, 40, 20}, 6,
+        {{"New Delhi", "06:15", 0}, {"Gurgaon", "06:55", 28}, {"Rewari", "07:35", 82}, {"Alwar", "08:35", 160}, {"Bandikui", "09:40", 235}, {"Jaipur", "10:45", 303}}},
+    {12951, "Western Rajdhani", "Mumbai", "New Delhi", "17:00", "08:35", "1384 km", "15h 35m", 1200, {0, 50, 30}, 6,
+        {{"Mumbai", "17:00", 0}, {"Surat", "20:25", 263}, {"Vadodara", "21:55", 392}, {"Ratlam", "00:55 +1", 654}, {"Kota", "03:20 +1", 920}, {"New Delhi", "08:35 +1", 1384}}},
+    {12627, "Southern Express", "New Delhi", "Chennai", "21:05", "05:45", "2180 km", "32h 40m", 1500, {80, 50, 30}, 7,
+        {{"New Delhi", "21:05", 0}, {"Agra", "23:50", 195}, {"Jhansi", "03:20 +1", 415}, {"Bhopal", "07:10 +1", 701}, {"Nagpur", "14:30 +1", 1090}, {"Vijayawada", "00:30 +2", 1735}, {"Chennai", "05:45 +2", 2180}}}
 };
 
-char className[3][10] = {"Sleeper", "3AC", "2AC"};
-float mult[3] = {1.0, 1.8, 2.5};     // fare multiplier of each class
+struct ClassType classes[3] = {{"Sleeper", 1.0}, {"3AC", 1.8}, {"2AC", 2.5}};
 
-char foodName[8][20] = {"Veg Thali", "Non-Veg Thali", "Veg Biryani", "Sandwich", "Snack Box", "Tea", "Coffee", "Water Bottle"};
-float foodPrice[8] = {120, 180, 150, 60, 50, 20, 30, 20};
-
-// Route of every train: stations in order, time at each station, km from the source.
-// (A time with +1 or +2 means the next day or the day after.)
-int stopCount[6] = {6, 5, 7, 6, 6, 7};
-char stopName[6][8][20] = {
-    {"New Delhi", "Ghaziabad", "Moradabad", "Bareilly", "Shahjahanpur", "Lucknow"},
-    {"Mumbai", "Thane", "Kalyan", "Lonavala", "Pune"},
-    {"New Delhi", "Kanpur", "Prayagraj", "Gaya", "Dhanbad", "Asansol", "Kolkata"},
-    {"New Delhi", "Gurgaon", "Rewari", "Alwar", "Bandikui", "Jaipur"},
-    {"Mumbai", "Surat", "Vadodara", "Ratlam", "Kota", "New Delhi"},
-    {"New Delhi", "Agra", "Jhansi", "Bhopal", "Nagpur", "Vijayawada", "Chennai"}
-};
-char stopTime[6][8][10] = {
-    {"06:00", "06:35", "08:40", "09:50", "10:35", "12:30"},
-    {"07:10", "07:40", "08:00", "09:20", "10:25"},
-    {"16:55", "22:15", "00:45 +1", "05:00 +1", "07:30 +1", "08:15 +1", "10:00 +1"},
-    {"06:15", "06:55", "07:35", "08:35", "09:40", "10:45"},
-    {"17:00", "20:25", "21:55", "00:55 +1", "03:20 +1", "08:35 +1"},
-    {"21:05", "23:50", "03:20 +1", "07:10 +1", "14:30 +1", "00:30 +2", "05:45 +2"}
-};
-int stopKm[6][8] = {
-    {0, 25, 167, 250, 320, 512},
-    {0, 25, 54, 128, 192},
-    {0, 440, 634, 990, 1240, 1290, 1451},
-    {0, 28, 82, 160, 235, 303},
-    {0, 263, 392, 654, 920, 1384},
-    {0, 195, 415, 701, 1090, 1735, 2180}
-};
+struct Food foods[8] = {{"Veg Thali", 120}, {"Non-Veg Thali", 180}, {"Veg Biryani", 150}, {"Sandwich", 60},
+                        {"Snack Box", 50}, {"Tea", 20}, {"Coffee", 30}, {"Water Bottle", 20}};
 
 struct Ticket tk[2000];
 int count = 0;                       // number of tickets made so far
+
+int isLetter(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+int isDigit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+int isBlank(char c) {        // space, tab or similar
+    return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r';
+}
 
 // reads one whole line safely. Extra characters are thrown away so they
 // do not go into the next question
@@ -97,12 +107,22 @@ void getLine(char s[], int size) {
 
 // read a number between min and max (keeps asking if wrong)
 int getNum(int min, int max) {
-    char line[50], extra;
-    int n;
+    char line[50];
+    int n, i, digits;
     while (1) {
         getLine(line, 50);
-        // sscanf gives 1 only when the line is just one number
-        if (sscanf(line, "%d %c", &n, &extra) == 1 && n >= min && n <= max) return n;
+        i = 0;
+        while (line[i] == ' ' || line[i] == '\t') i++;      // spaces before the number
+        if (line[i] == '+') i++;
+        n = 0;
+        digits = 0;
+        while (isDigit(line[i])) {
+            if (n <= 100000000) n = n * 10 + (line[i] - '0');   // keeps a very long number from overflowing
+            digits++;
+            i++;
+        }
+        while (line[i] == ' ' || line[i] == '\t' || line[i] == '\r') i++;   // spaces after the number
+        if (digits > 0 && line[i] == '\0' && n >= min && n <= max) return n;
         printf("Enter a number between %d and %d : ", min, max);
     }
 }
@@ -127,7 +147,7 @@ void getName(char msg[], char name[]) {
         getLine(name, 30);
         ok = (name[0] != '\0');
         for (int i = 0; name[i] != '\0'; i++) {
-            if (!isalpha((unsigned char)name[i]) && name[i] != ' ' && name[i] != '.') ok = 0;
+            if (!isLetter(name[i]) && name[i] != ' ' && name[i] != '.') ok = 0;
         }
         if (ok == 1) return;
         printf("Invalid name. Use letters, spaces and dots only.\n");
@@ -138,15 +158,23 @@ void getName(char msg[], char name[]) {
 void getDate(char date[]) {
     int days[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     char line[40];
-    int d, m, y, maxDay;
+    int d = 0, m = 0, y = 0, maxDay, ok, i;
     time_t now = time(NULL);
     struct tm *lt = localtime(&now);
     int today = (lt->tm_year + 1900) * 10000 + (lt->tm_mon + 1) * 100 + lt->tm_mday;
     while (1) {
         printf("Enter travel date (dd-mm-yyyy) : ");
         getLine(line, 40);
-        if (strlen(line) != 10 || line[2] != '-' || line[5] != '-' ||
-            sscanf(line, "%d-%d-%d", &d, &m, &y) != 3 || m < 1 || m > 12 || y < 2000 || y > 2100) {
+        ok = (strlen(line) == 10 && line[2] == '-' && line[5] == '-');
+        for (i = 0; i < 10 && ok == 1; i++) {
+            if (i != 2 && i != 5 && !isDigit(line[i])) ok = 0;   // every other character must be a digit
+        }
+        if (ok == 1) {
+            d = (line[0] - '0') * 10 + (line[1] - '0');
+            m = (line[3] - '0') * 10 + (line[4] - '0');
+            y = (line[6] - '0') * 1000 + (line[7] - '0') * 100 + (line[8] - '0') * 10 + (line[9] - '0');
+        }
+        if (ok == 0 || m < 1 || m > 12 || y < 2000 || y > 2100) {
             printf("Invalid format. Example: 25-12-2026\n");
             continue;
         }
@@ -168,7 +196,10 @@ void getDate(char date[]) {
 // makes a lowercase copy of a string (used for searching)
 void lower(char from[], char to[]) {
     int i;
-    for (i = 0; from[i] != '\0'; i++) to[i] = tolower((unsigned char)from[i]);
+    for (i = 0; from[i] != '\0'; i++) {
+        if (from[i] >= 'A' && from[i] <= 'Z') to[i] = from[i] + 32;
+        else to[i] = from[i];
+    }
     to[i] = '\0';
 }
 
@@ -243,17 +274,17 @@ int waitPos(int i) {
 
 // fare of one seat from stop 'from' to stop 'to' (full route = full fare)
 float segFare(int t, int c, int from, int to) {
-    float km = stopKm[t][to] - stopKm[t][from];
-    float total = stopKm[t][stopCount[t] - 1];
-    return trains[t].fare * mult[c] * km / total;
+    float km = trains[t].stops[to].km - trains[t].stops[from].km;
+    float total = trains[t].stops[trains[t].nStops - 1].km;
+    return trains[t].fare * classes[c].mult * km / total;
 }
 
 // returns the position of a station in the route of train t (-1 if not on the route)
 // the word must already be in lowercase
 int stopIndex(int t, char word[]) {
     char name[20];
-    for (int i = 0; i < stopCount[t]; i++) {
-        lower(stopName[t][i], name);
+    for (int i = 0; i < trains[t].nStops; i++) {
+        lower(trains[t].stops[i].name, name);
         if (strstr(name, word) != NULL) return i;
     }
     return -1;
@@ -262,10 +293,10 @@ int stopIndex(int t, char word[]) {
 // ---------------- login and register ----------------
 
 // simple hash so the password is not saved as plain text
-unsigned int hashPass(char s[]) {
-    unsigned int h = 5381;
+int hashPass(char s[]) {
+    int h = 5381;
     for (int i = 0; s[i] != '\0'; i++) {
-        h = h * 33 + (unsigned char)s[i];
+        h = (h * 33 + s[i]) % 1000003;     // % keeps the number small
     }
     return h;
 }
@@ -273,10 +304,10 @@ unsigned int hashPass(char s[]) {
 // returns 1 if the username is already in users.txt
 int userExists(char name[]) {
     char u[20];
-    unsigned int h;
+    int h;
     FILE *fp = fopen("users.txt", "r");
     if (fp == NULL) return 0;
-    while (fscanf(fp, "%19s %u", u, &h) == 2) {
+    while (fscanf(fp, "%19s %d", u, &h) == 2) {
         if (strcmp(u, name) == 0) {
             fclose(fp);
             return 1;
@@ -295,7 +326,7 @@ void registerUser() {
         getLine(user, 40);
         ok = (strlen(user) >= 3 && strlen(user) <= 19);
         for (int i = 0; user[i] != '\0'; i++) {
-            if (!isalnum((unsigned char)user[i]) && user[i] != '_') ok = 0;
+            if (!isLetter(user[i]) && !isDigit(user[i]) && user[i] != '_') ok = 0;
         }
         if (ok == 0) printf("Invalid username.\n");
         else if (userExists(user) == 1) printf("This username is already taken.\n");
@@ -306,7 +337,7 @@ void registerUser() {
         getLine(pass, 40);
         ok = (strlen(pass) >= 4 && strlen(pass) <= 19);
         for (int i = 0; pass[i] != '\0'; i++) {
-            if (isspace((unsigned char)pass[i])) ok = 0;
+            if (isBlank(pass[i])) ok = 0;
         }
         if (ok == 0) {
             printf("Invalid password.\n");
@@ -325,7 +356,7 @@ void registerUser() {
         printf("Could not open users.txt for writing.\n");
         return;
     }
-    fprintf(fp, "%s %u\n", user, hashPass(pass));
+    fprintf(fp, "%s %d\n", user, hashPass(pass));
     fclose(fp);
     printf("Account created. Please login.\n");
 }
@@ -333,7 +364,7 @@ void registerUser() {
 // returns 1 if login is successful
 int loginUser(char user[]) {
     char name[40], pass[40], u[20];
-    unsigned int h;
+    int h;
     printf("\n---------- LOGIN ----------\n");
     for (int attempt = 1; attempt <= 3; attempt++) {
         printf("Username : ");
@@ -342,7 +373,7 @@ int loginUser(char user[]) {
         getLine(pass, 40);
         FILE *fp = fopen("users.txt", "r");
         if (fp != NULL) {
-            while (fscanf(fp, "%19s %u", u, &h) == 2) {
+            while (fscanf(fp, "%19s %d", u, &h) == 2) {
                 if (strcmp(u, name) == 0 && h == hashPass(pass)) {
                     fclose(fp);
                     strcpy(user, name);
@@ -380,15 +411,15 @@ void printTrain(struct Train *t, int index) {
     printf(" Classes     :\n");
     for (int c = 0; c < 3; c++) {
         if (t->cap[c] == 0) {
-            printf("   %-8s : not available on this train\n", className[c]);
+            printf("   %-8s : not available on this train\n", classes[c].name);
         } else {
-            printf("   %-8s : %3d seats | Rs. %.2f per seat (full route)\n", className[c], t->cap[c], t->fare * mult[c]);
+            printf("   %-8s : %3d seats | Rs. %.2f per seat (full route)\n", classes[c].name, t->cap[c], t->fare * classes[c].mult);
         }
     }
-    printf("\n Complete route (%d stations):\n", stopCount[index]);
+    printf("\n Complete route (%d stations):\n", trains[index].nStops);
     printf("   %-4s %-15s %-10s %s\n", "No", "Station", "Time", "Km from start");
-    for (int s = 0; s < stopCount[index]; s++) {
-        printf("   %-4d %-15s %-10s %d\n", s + 1, stopName[index][s], stopTime[index][s], stopKm[index][s]);
+    for (int s = 0; s < trains[index].nStops; s++) {
+        printf("   %-4d %-15s %-10s %d\n", s + 1, trains[index].stops[s].name, trains[index].stops[s].time, trains[index].stops[s].km);
     }
     printf("\n For free seats on a date use 'Check seat availability' in the menu.\n");
     printf("------------------------------------------------------------\n");
@@ -397,7 +428,7 @@ void printTrain(struct Train *t, int index) {
 // search by train number or by city name
 void searchTrain() {
     char word[40], lw[40], a[30], b[30];
-    int found = 0, allDigits = 1;
+    int found = 0, allDigits = 1, num = 0;
     printf("Enter train number or a city name : ");
     getLine(word, 40);
     if (word[0] == '\0') {
@@ -405,13 +436,14 @@ void searchTrain() {
         return;
     }
     for (int i = 0; word[i] != '\0'; i++) {
-        if (!isdigit((unsigned char)word[i])) allDigits = 0;
+        if (!isDigit(word[i])) allDigits = 0;
+        else if (num <= 100000000) num = num * 10 + (word[i] - '0');
     }
     lower(word, lw);
     for (int i = 0; i < 6; i++) {
         lower(trains[i].source, a);
         lower(trains[i].dest, b);
-        if ((allDigits == 1 && trains[i].no == atoi(word)) ||
+        if ((allDigits == 1 && trains[i].no == num) ||
             (allDigits == 0 && (strstr(a, lw) != NULL || strstr(b, lw) != NULL))) {
             printTrain(&trains[i], i);
             found = 1;
@@ -441,9 +473,9 @@ int pickClass(int t, char msg[], char date[], int from, int to) {
     printf("\nClasses on %s for %s:\n", trains[t].name, date);
     for (int c = 0; c < 3; c++) {
         if (trains[t].cap[c] == 0) {
-            printf("  %d. %-8s - not available\n", c + 1, className[c]);
+            printf("  %d. %-8s - not available\n", c + 1, classes[c].name);
         } else {
-            printf("  %d. %-8s Rs. %8.2f/seat | Free: %3d | Waitlisted: %d\n", c + 1, className[c],
+            printf("  %d. %-8s Rs. %8.2f/seat | Free: %3d | Waitlisted: %d\n", c + 1, classes[c].name,
                    segFare(t, c, from, to), freeSeats(t, c, date), waitingSeats(t, c, date));
         }
     }
@@ -489,11 +521,11 @@ void checkAvailability() {
     if (t == -1) return;
     printf("\n");
     getDate(date);
-    int c = pickClass(t, "View seat matrix of class (0 to go back) : ", date, 0, stopCount[t] - 1);
+    int c = pickClass(t, "View seat matrix of class (0 to go back) : ", date, 0, trains[t].nStops - 1);
     while (c != -1) {
         buildRow(t, c, date, row);
-        showMatrix(row, trains[t].cap[c], trains[t].name, className[c], date);
-        c = pickClass(t, "View seat matrix of class (0 to go back) : ", date, 0, stopCount[t] - 1);
+        showMatrix(row, trains[t].cap[c], trains[t].name, classes[c].name, date);
+        c = pickClass(t, "View seat matrix of class (0 to go back) : ", date, 0, trains[t].nStops - 1);
     }
 }
 
@@ -510,16 +542,16 @@ void printTicket(int i) {
     else printf(" Status        : CANCELLED\n");
     printf("------------------------------------------------------------\n");
     printf(" Train         : %d - %s\n", trains[p->train].no, trains[p->train].name);
-    printf(" From          : %s\n", stopName[p->train][p->from]);
-    printf(" To            : %s\n", stopName[p->train][p->to]);
+    printf(" From          : %s\n", trains[p->train].stops[p->from].name);
+    printf(" To            : %s\n", trains[p->train].stops[p->to].name);
     printf(" Date          : %s\n", p->date);
-    printf(" Departure     : %s     Arrival : %s\n", stopTime[p->train][p->from], stopTime[p->train][p->to]);
-    printf(" Class         : %s\n", className[p->cls]);
+    printf(" Departure     : %s     Arrival : %s\n", trains[p->train].stops[p->from].time, trains[p->train].stops[p->to].time);
+    printf(" Class         : %s\n", classes[p->cls].name);
     printf("------------------------------------------------------------\n");
     printf(" Passengers    :\n");
     for (int k = 0; k < p->qty; k++) {
-        if (p->seats[k] > 0) printf("   %d. %-22s Age %-3d Seat %d\n", k + 1, p->pname[k], p->age[k], p->seats[k]);
-        else printf("   %d. %-22s Age %-3d Seat: to be allotted\n", k + 1, p->pname[k], p->age[k]);
+        if (p->seats[k] > 0) printf("   %d. %-22s Age %-3d Seat %d\n", k + 1, p->pax[k].name, p->pax[k].age, p->seats[k]);
+        else printf("   %d. %-22s Age %-3d Seat: to be allotted\n", k + 1, p->pax[k].name, p->pax[k].age);
     }
     printf("------------------------------------------------------------\n");
     printf(" Seat Fare     : Rs. %.2f\n", p->fare);
@@ -545,7 +577,7 @@ float orderFood() {
     if (askYes("\nWould you like to order food? (y/n) : ") == 0) return 0;
     printf("\n------------------- FOOD MENU -------------------\n");
     for (int i = 0; i < 8; i++) {
-        printf("  %d. %-16s Rs. %6.2f\n", i + 1, foodName[i], foodPrice[i]);
+        printf("  %d. %-16s Rs. %6.2f\n", i + 1, foods[i].name, foods[i].price);
     }
     printf("-------------------------------------------------\n");
     printf("Select item (0 = done) : ");
@@ -553,8 +585,8 @@ float orderFood() {
     while (item != 0) {
         printf("Quantity (1-10) : ");
         int q = getNum(1, 10);
-        total = total + foodPrice[item - 1] * q;
-        printf("Added %d x %s. Food total so far: Rs. %.2f\n", q, foodName[item - 1], total);
+        total = total + foods[item - 1].price * q;
+        printf("Added %d x %s. Food total so far: Rs. %.2f\n", q, foods[item - 1].name, total);
         printf("Select item (0 = done) : ");
         item = getNum(0, 8);
     }
@@ -564,24 +596,23 @@ float orderFood() {
 // Books a ticket. If t is -1 the user picks the train and the whole route is booked.
 // Otherwise train, stations and date come from the station search.
 void bookTicket(char user[], int t, int from, int to, char date[]) {
-    struct Ticket n;          // the new ticket, it is added to tk[] after confirmation
+    struct Ticket n = {0};    // the new ticket (everything starts as 0), it is added to tk[] after confirmation
     int row[700];             // seats of this train, class and date
     if (count >= 2000) {
         printf("Booking database is full.\n");
         return;
     }
-    memset(&n, 0, sizeof(n));
     printf("\n------------------------ TICKET COUNTER ------------------------\n");
     if (t == -1) {
         t = pickTrain();
         if (t == -1) return;
         from = 0;
-        to = stopCount[t] - 1;
+        to = trains[t].nStops - 1;
         printf("\n");
         getDate(n.date);
     } else {
         strcpy(n.date, date);
-        printf("%s: %s to %s on %s\n", trains[t].name, stopName[t][from], stopName[t][to], n.date);
+        printf("%s: %s to %s on %s\n", trains[t].name, trains[t].stops[from].name, trains[t].stops[to].name, n.date);
     }
     int c = pickClass(t, "Choose class (0 to go back) : ", n.date, from, to);
     if (c == -1) return;
@@ -606,12 +637,12 @@ void bookTicket(char user[], int t, int from, int to, char date[]) {
     if (free >= qty) {
         // enough seats, so the user chooses seats from the matrix
         n.status = 1;
-        showMatrix(row, cap, trains[t].name, className[c], n.date);
+        showMatrix(row, cap, trains[t].name, classes[c].name, n.date);
         for (int i = 0; i < qty; i++) {
             printf("\n--- Passenger %d of %d ---\n", i + 1, qty);
-            getName("Passenger name : ", n.pname[i]);
+            getName("Passenger name : ", n.pax[i].name);
             printf("Passenger age : ");
-            n.age[i] = getNum(1, 120);
+            n.pax[i].age = getNum(1, 120);
             printf("Choose seat number from the matrix : ");
             int s = getNum(1, cap);
             int ok = 0;
@@ -635,8 +666,8 @@ void bookTicket(char user[], int t, int from, int to, char date[]) {
         }
     } else {
         // not enough seats, so offer the waitlist
-        if (free == 0) printf("\nAll %s seats on this train are FULL for %s.\n", className[c], n.date);
-        else printf("\nOnly %d %s seat(s) are free but you asked for %d.\n", free, className[c], qty);
+        if (free == 0) printf("\nAll %s seats on this train are FULL for %s.\n", classes[c].name, n.date);
+        else printf("\nOnly %d %s seat(s) are free but you asked for %d.\n", free, classes[c].name, qty);
         printf("You can join the waitlist. If seats of this class are cancelled,\n");
         printf("your booking is confirmed automatically.\n");
         if (askYes("Join the waitlist? (y/n) : ") == 0) {
@@ -646,9 +677,9 @@ void bookTicket(char user[], int t, int from, int to, char date[]) {
         n.status = 2;
         for (int i = 0; i < qty; i++) {
             printf("\n--- Passenger %d of %d ---\n", i + 1, qty);
-            getName("Passenger name : ", n.pname[i]);
+            getName("Passenger name : ", n.pax[i].name);
             printf("Passenger age : ");
-            n.age[i] = getNum(1, 120);
+            n.pax[i].age = getNum(1, 120);
         }
     }
 
@@ -657,8 +688,8 @@ void bookTicket(char user[], int t, int from, int to, char date[]) {
 
     printf("\n-------------------- BOOKING SUMMARY --------------------\n");
     printf(" Train      : %d - %s\n", trains[t].no, trains[t].name);
-    printf(" Journey    : %s -> %s (%d km)\n", stopName[t][from], stopName[t][to], stopKm[t][to] - stopKm[t][from]);
-    printf(" Class      : %s x %d  (%s)\n", className[c], qty, n.status == 1 ? "confirmed seats" : "WAITLIST");
+    printf(" Journey    : %s -> %s (%d km)\n", trains[t].stops[from].name, trains[t].stops[to].name, trains[t].stops[to].km - trains[t].stops[from].km);
+    printf(" Class      : %s x %d  (%s)\n", classes[c].name, qty, n.status == 1 ? "confirmed seats" : "WAITLIST");
     if (n.status == 1) {
         printf(" Seats      : ");
         for (int k = 0; k < qty; k++) {
@@ -677,15 +708,9 @@ void bookTicket(char user[], int t, int from, int to, char date[]) {
         return;
     }
 
-    // make a unique 6 digit ticket number
-    int unique = 0;
-    while (unique == 0) {
-        n.no = rand() % 900000 + 100000;
-        unique = 1;
-        for (int i = 0; i < count; i++) {
-            if (tk[i].no == n.no) unique = 0;
-        }
-    }
+    // make a 6 digit ticket number. 7919 and 900000 have no common factor,
+    // so two tickets never get the same number (up to 900000 tickets)
+    n.no = (count * 7919 + 123457) % 900000 + 100000;
     tk[count] = n;      // a confirmed ticket automatically makes its seats [F] for that date
     count++;
     saveData();
@@ -731,12 +756,12 @@ void searchBetween(char user[]) {
     for (int j = 0; j < n; j++) {
         int t = match[j];
         printf("\n%d - %s\n", trains[t].no, trains[t].name);
-        printf("   %s %s  ->  %s %s   (%d km)\n", stopName[t][fi[j]], stopTime[t][fi[j]],
-               stopName[t][ti[j]], stopTime[t][ti[j]], stopKm[t][ti[j]] - stopKm[t][fi[j]]);
+        printf("   %s %s  ->  %s %s   (%d km)\n", trains[t].stops[fi[j]].name, trains[t].stops[fi[j]].time,
+               trains[t].stops[ti[j]].name, trains[t].stops[ti[j]].time, trains[t].stops[ti[j]].km - trains[t].stops[fi[j]].km);
         for (int c = 0; c < 3; c++) {
             if (trains[t].cap[c] == 0) continue;
             int free = freeSeats(t, c, date);
-            printf("   %-8s Rs. %8.2f/seat : ", className[c], segFare(t, c, fi[j], ti[j]));
+            printf("   %-8s Rs. %8.2f/seat : ", classes[c].name, segFare(t, c, fi[j], ti[j]));
             if (free > 0) printf("%d seats free\n", free);
             else printf("FULL (waitlist: %d seats)\n", waitingSeats(t, c, date));
         }
@@ -843,9 +868,9 @@ void bookingHistory(char user[]) {
         printf(" Booking #%d\n", n);
         printf("   Ticket No : %d\n", tk[i].no);
         printf("   Train     : %d - %s (%s -> %s)\n", trains[tk[i].train].no, trains[tk[i].train].name,
-               stopName[tk[i].train][tk[i].from], stopName[tk[i].train][tk[i].to]);
+               trains[tk[i].train].stops[tk[i].from].name, trains[tk[i].train].stops[tk[i].to].name);
         printf("   Date      : %s\n", tk[i].date);
-        printf("   Class     : %s x %d\n", className[tk[i].cls], tk[i].qty);
+        printf("   Class     : %s x %d\n", classes[tk[i].cls].name, tk[i].qty);
         if (tk[i].status == 1) {
             printf("   Seats     : ");
             printSeats(i);
@@ -912,7 +937,6 @@ void mainMenu(char user[]) {
 int main() {
     char user[20];
     int choice = 0;
-    srand(time(NULL));
     loadData();
     printf("========================================\n");
     printf("|      RAILWAY RESERVATION SYSTEM      |\n");
